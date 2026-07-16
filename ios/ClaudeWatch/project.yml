@@ -25,6 +25,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.assiamah.claudewatch
+        TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_FILE: "ClaudeWatch iOS/Info.plist"
         PRODUCT_NAME: Agent Watch
         GENERATE_INFOPLIST_FILE: false
