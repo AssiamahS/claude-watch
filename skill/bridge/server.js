@@ -1306,6 +1306,13 @@ async function handleHookPermission(req, res) {
     pendingPermissionBodies.set(permissionId, body.permission_suggestions);
   }
 
+  // Nobody listening → don't hold the session hostage for 10 minutes;
+  // an empty hook response lets Claude Code prompt in the terminal as usual.
+  if (sseClients.size === 0) {
+    log("info", `Hook: PermissionRequest ${permissionId} passthrough — no connected clients`);
+    return jsonResponse(res, 200, {});
+  }
+
   pushSseEvent("permission-request", { permissionId, ...body }, sid);
 
   const decision = await waitForPermission(permissionId);
