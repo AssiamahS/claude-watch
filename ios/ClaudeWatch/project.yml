@@ -46,8 +46,6 @@ targets:
         PRODUCT_NAME: Agent Watch
         GENERATE_INFOPLIST_FILE: false
         SUPPORTS_MACCATALYST: false
-        ARCHS: "arm64 arm64e arm64_32"
-        "EXCLUDED_ARCHS[sdk=watchsimulator*]": arm64e
 
 schemes:
   ClaudeWatch:
