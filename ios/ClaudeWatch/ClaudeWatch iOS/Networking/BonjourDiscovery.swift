@@ -66,9 +66,16 @@ final class BonjourDiscovery: ObservableObject {
     }
 
     /// Tries to connect to a specific IP on ports 7860-7869.
-    func discoverAtIP(_ ip: String) async throws -> DiscoveredService {
+    func discoverAtIP(_ rawIP: String) async throws -> DiscoveredService {
+        // Users paste "10.0.0.58:7860" — strip any port/scheme so the URL we
+        // build below stays valid instead of force-unwrap crashing.
+        let ip = rawIP
+            .replacingOccurrences(of: "http://", with: "")
+            .replacingOccurrences(of: "https://", with: "")
+            .split(separator: ":").first.map(String.init)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? rawIP
         for port in UInt16(7860)...UInt16(7869) {
-            let url = URL(string: "http://\(ip):\(port)/status")!
+            guard let url = URL(string: "http://\(ip):\(port)/status") else { continue }
             var request = URLRequest(url: url)
             request.timeoutInterval = 3
             do {
