@@ -33,9 +33,8 @@ struct RawTerminalView: View {
                     Spacer()
                 } else {
                     ScrollView(.vertical, showsIndicators: false) {
-                        Text(session.termScreen)
+                        Text(AnsiRenderer.render(session.termScreen))
                             .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.9))
                             .lineSpacing(0)
                             .minimumScaleFactor(0.6)
                             .frame(maxWidth: .infinity, alignment: .topLeading)

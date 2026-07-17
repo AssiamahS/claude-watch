@@ -988,7 +988,8 @@ function ensureTermSession(cb) {
 
 function pollTermScreen() {
   if (sseClients.size === 0) return; // nobody watching — skip the capture
-  tmux(["capture-pane", "-pt", TERM_SESSION], (err, screenText) => {
+  // -e keeps the ANSI color escapes so the watch can render the real TUI look
+  tmux(["capture-pane", "-p", "-e", "-t", TERM_SESSION], (err, screenText) => {
     if (err) return; // session gone — watch input recreates it on demand
     if (screenText === termLastFrame) return;
     termLastFrame = screenText;
