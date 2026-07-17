@@ -24,6 +24,14 @@ class WatchBridgeClient: ObservableObject {
         token = UserDefaults.standard.string(forKey: "watch_bridge_token")
     }
 
+    /// Adopt credentials handed off from the paired iPhone — no code entry.
+    func adopt(baseURL: URL, token: String) {
+        self.baseURL = baseURL
+        self.token = token
+        UserDefaults.standard.set(baseURL.absoluteString, forKey: "watch_bridge_url")
+        UserDefaults.standard.set(token, forKey: "watch_bridge_token")
+    }
+
     /// Discover bridge via Bonjour on LAN, fallback to localhost (simulator)
     func discover() async -> URL? {
         // Try Bonjour first (works on real watch over Wi-Fi)

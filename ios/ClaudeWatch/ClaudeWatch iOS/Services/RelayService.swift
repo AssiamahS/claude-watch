@@ -179,6 +179,8 @@ final class RelayService: ObservableObject {
     private func startEventStream() {
         guard let baseURL = bridgeClient.baseURL, let token = bridgeClient.token else { return }
         sseClient.connect(baseURL: baseURL, token: token)
+        // Hand the watch our credentials so it pairs itself — no IP/code entry
+        sessionManager.sendBridgeHandoff(url: baseURL, token: token)
     }
 
     private func setupSSEEventHandler() {

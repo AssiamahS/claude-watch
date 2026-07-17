@@ -27,6 +27,14 @@ final class WatchSessionManager: NSObject, ObservableObject {
     /// Called when the application context is updated by the counterpart.
     var onApplicationContextReceived: (([String: Any]) -> Void)?
 
+    /// watchOS: called when the iPhone hands off its bridge credentials so
+    /// the watch can connect without any code/IP entry.
+    var onBridgeHandoff: ((URL, String) -> Void)?
+
+    #if os(iOS)
+    private var lastHandoff: String?
+    #endif
+
     // MARK: - Private
 
     private var session: WCSession? {
@@ -101,6 +109,29 @@ final class WatchSessionManager: NSObject, ObservableObject {
     }
 
     #if os(iOS)
+    /// Hands the phone's bridge credentials to the watch so it pairs itself.
+    /// sendMessage when reachable (instant), transferUserInfo otherwise
+    /// (queued until the watch app next runs). Deduped per url+token.
+    func sendBridgeHandoff(url: URL, token: String, force: Bool = false) {
+        guard let session else { return }
+        let key = url.absoluteString + "|" + token
+        if !force && key == lastHandoff { return }
+        lastHandoff = key
+
+        let dictionary: [String: Any] = [
+            "bridgeHandoff": true,
+            "bridgeURL": url.absoluteString,
+            "bridgeToken": token,
+        ]
+        if session.isReachable {
+            session.sendMessage(dictionary, replyHandler: nil) { _ in
+                session.transferUserInfo(dictionary)
+            }
+        } else {
+            session.transferUserInfo(dictionary)
+        }
+    }
+
     /// Transfers complication user info to the watch.
     /// Only available on iOS; the watch reads this via `didReceiveUserInfo`.
     func transferComplicationUserInfo(_ state: SessionState) {
@@ -171,6 +202,15 @@ extension WatchSessionManager: WCSessionDelegate {
         Task { @MainActor in
             self.isReachable = session.isReachable
         }
+        #if os(iOS)
+        // Watch just came in range — make sure it has the bridge credentials
+        if session.isReachable, let key = lastHandoff {
+            let parts = key.split(separator: "|", maxSplits: 1)
+            if parts.count == 2, let url = URL(string: String(parts[0])) {
+                sendBridgeHandoff(url: url, token: String(parts[1]), force: true)
+            }
+        }
+        #endif
     }
 
     // MARK: Receiving messages
@@ -213,6 +253,15 @@ extension WatchSessionManager: WCSessionDelegate {
     // MARK: - Private helpers
 
     private func handleIncoming(dictionary: [String: Any]) {
+        // Bridge credential handoff from the iPhone — not a WatchMessage
+        if dictionary["bridgeHandoff"] as? Bool == true,
+           let urlString = dictionary["bridgeURL"] as? String,
+           let url = URL(string: urlString),
+           let token = dictionary["bridgeToken"] as? String {
+            onBridgeHandoff?(url, token)
+            return
+        }
+
         do {
             let message = try WatchMessage(from: dictionary)
 

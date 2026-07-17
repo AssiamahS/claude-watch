@@ -31,6 +31,13 @@ class WatchViewState: ObservableObject {
     private var sseTask: URLSessionDataTask?
 
     private init() {
+        // Listen for the iPhone handing off its bridge credentials —
+        // pairs the watch with zero typing (no code, no IP).
+        WatchSessionManager.shared.onBridgeHandoff = { [weak self] url, token in
+            DispatchQueue.main.async { self?.adoptHandoff(url: url, token: token) }
+        }
+        WatchSessionManager.shared.activate()
+
         if bridge.isPaired {
             Task {
                 let reachable = await verifyBridge()
@@ -45,6 +52,16 @@ class WatchViewState: ObservableObject {
                 }
             }
         }
+    }
+
+    private func adoptHandoff(url: URL, token: String) {
+        // Ignore if we're already connected with these exact credentials
+        if isPaired, bridge.token == token, bridge.baseURL == url { return }
+        print("[WatchViewState] Adopting bridge credentials from iPhone handoff")
+        bridge.adopt(baseURL: url, token: token)
+        stopEventStream()
+        isPaired = true
+        startEventStream()
     }
 
     private func verifyBridge() async -> Bool {
