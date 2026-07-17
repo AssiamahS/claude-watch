@@ -78,13 +78,34 @@ const CODEX_SESSION_BOOTSTRAP_LOOKBACK_MS = 30 * 60 * 1000;
 const CODEX_SESSION_SCAN_LIMIT = 25;
 const CODEX_SESSION_ROOT = path.join(os.homedir(), ".codex", "sessions");
 const CODEX_LOG_FILE = path.join(os.homedir(), ".codex", "log", "codex-tui.log");
-const BRIDGE_ID = crypto.randomUUID();
+// Persisted identity: bridge id + session token survive restarts so paired
+// devices never have to re-enter a code after the bridge bounces.
+const STATE_FILE = path.join(os.homedir(), ".claude-watch-bridge.json");
+
+function loadPersistedState() {
+  try {
+    const s = JSON.parse(fs.readFileSync(STATE_FILE, "utf-8"));
+    if (typeof s.bridgeId === "string" && s.bridgeId) return s;
+  } catch { /* first boot or unreadable — start fresh */ }
+  return { bridgeId: crypto.randomUUID(), sessionToken: null };
+}
+
+function persistState() {
+  try {
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ bridgeId: BRIDGE_ID, sessionToken }), { mode: 0o600 });
+  } catch (err) {
+    log("warn", `Could not persist bridge state: ${err.message}`);
+  }
+}
+
+const persisted = loadPersistedState();
+const BRIDGE_ID = persisted.bridgeId;
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-let sessionToken = null;
+let sessionToken = persisted.sessionToken;
 let pairingCode = null;
 let pairingCodeExpiresAt = 0;
 
@@ -93,7 +114,7 @@ let rateLimitAttempts = 0;
 let rateLimitWindowStart = Date.now();
 
 // Bridge-level state: "idle" | "connected"
-let bridgeState = "idle";
+let bridgeState = sessionToken ? "connected" : "idle";
 
 // Multi-session: each entry is a session slot
 // { id, agent, cwd, folderName, ptyProcess, state, createdAt }
@@ -144,6 +165,7 @@ function generatePairingCode() {
 function generateSessionToken() {
   const token = crypto.randomBytes(32).toString("hex");
   sessionToken = token;
+  persistState();
   return token;
 }
 
