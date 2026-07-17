@@ -56,6 +56,11 @@ if (CODEX_BIN) {
   log("info", "Codex not found — Codex sessions will not be available.");
 }
 
+const TMUX_BIN = findBinary("tmux", [
+  "/opt/homebrew/bin/tmux",
+  "/usr/local/bin/tmux",
+]);
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -931,6 +936,87 @@ function resolvePermission(permissionId, decision) {
 }
 
 // ---------------------------------------------------------------------------
+// Terminal mirror — slyterm on the wrist
+// ---------------------------------------------------------------------------
+//
+// Mirrors a real terminal to the watch: a detached tmux session runs the
+// same shell slyterm serves through ttyd, the bridge polls tmux's rendered
+// screen and pushes changed frames as "screen" SSE events, and watch input
+// arrives via POST /command {termInput} as literal keystrokes.
+
+const TERM_SESSION = "slywatch";
+const TERM_COLS = 40;
+const TERM_ROWS = 12;
+const TERM_POLL_MS = 800;
+const TERM_SHELL = (() => {
+  const slyterm = path.join(os.homedir(), ".local", "bin", "slyterm-shell");
+  try { fs.accessSync(slyterm, fs.constants.X_OK); return slyterm; } catch { /* fall through */ }
+  return CLAUDE_BIN || process.env.SHELL || "/bin/zsh";
+})();
+
+let termLastFrame = null;
+
+function tmux(args, cb) {
+  if (!TMUX_BIN) return cb?.(new Error("tmux not installed"));
+  const proc = childSpawn(TMUX_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+  const out = [];
+  proc.stdout.on("data", (d) => out.push(d));
+  proc.on("error", (err) => cb?.(err));
+  proc.on("close", (code) => {
+    cb?.(code === 0 ? null : new Error(`tmux ${args[0]} exited ${code}`), Buffer.concat(out).toString("utf-8"));
+  });
+}
+
+function ensureTermSession(cb) {
+  tmux(["has-session", "-t", TERM_SESSION], (err) => {
+    if (!err) return cb?.(null);
+    tmux([
+      "new-session", "-d", "-s", TERM_SESSION,
+      "-x", String(TERM_COLS), "-y", String(TERM_ROWS),
+      TERM_SHELL,
+    ], (createErr) => {
+      if (createErr) {
+        log("error", `Terminal mirror: cannot create tmux session: ${createErr.message}`);
+        return cb?.(createErr);
+      }
+      log("info", `Terminal mirror: tmux session "${TERM_SESSION}" (${TERM_COLS}x${TERM_ROWS}) running ${TERM_SHELL}`);
+      termLastFrame = null;
+      cb?.(null);
+    });
+  });
+}
+
+function pollTermScreen() {
+  if (sseClients.size === 0) return; // nobody watching — skip the capture
+  tmux(["capture-pane", "-pt", TERM_SESSION], (err, screenText) => {
+    if (err) return; // session gone — watch input recreates it on demand
+    if (screenText === termLastFrame) return;
+    termLastFrame = screenText;
+    pushSseEvent("screen", { text: screenText, cols: TERM_COLS, rows: TERM_ROWS });
+  });
+}
+
+function startTermMirror() {
+  if (!TMUX_BIN) {
+    log("warn", "tmux not found — terminal mirror disabled (brew install tmux)");
+    return;
+  }
+  ensureTermSession();
+  setInterval(pollTermScreen, TERM_POLL_MS);
+}
+
+function sendTermInput(text, cb) {
+  ensureTermSession((err) => {
+    if (err) return cb?.(err);
+    // -l sends the text literally; Enter goes as its own keypress
+    tmux(["send-keys", "-t", TERM_SESSION, "-l", "--", text], (sendErr) => {
+      if (sendErr) return cb?.(sendErr);
+      tmux(["send-keys", "-t", TERM_SESSION, "Enter"], cb);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Route handlers
 // ---------------------------------------------------------------------------
 
@@ -1010,6 +1096,17 @@ async function handleCommand(req, res) {
     selectedOption,
     optionIndex,
   } = body;
+
+  // --- Raw terminal input (slyterm mirror) ---
+  if (typeof body.termInput === "string") {
+    const text = body.termInput.replace(/\n$/, "");
+    sendTermInput(text, (err) => {
+      if (err) return jsonResponse(res, 500, { error: err.message });
+      termLastFrame = null; // force the next poll to push a fresh frame
+      return jsonResponse(res, 200, { ok: true, terminal: true });
+    });
+    return;
+  }
 
   // --- Spawn a new session ---
   if (spawnRequest) {
@@ -1183,6 +1280,16 @@ function handleEvents(req, res) {
 
   sseClients.add(res);
   log("info", `SSE client connected (total: ${sseClients.size})`);
+
+  // Late joiners get the current terminal-mirror frame immediately
+  if (termLastFrame !== null) {
+    const screenEntry = formatSseMessage({
+      id: sseEventId++,
+      event: "screen",
+      data: JSON.stringify({ text: termLastFrame, cols: TERM_COLS, rows: TERM_ROWS }),
+    });
+    try { res.write(screenEntry); } catch { /* ignore */ }
+  }
 
   // Send current sessions state so late-connecting clients see existing sessions
   for (const [sid, slot] of sessions) {
@@ -1482,6 +1589,8 @@ async function startServer() {
   }
 
   log("info", `Bridge server listening on 0.0.0.0:${boundPort}`);
+
+  startTermMirror();
 
   const code = generatePairingCode();
 

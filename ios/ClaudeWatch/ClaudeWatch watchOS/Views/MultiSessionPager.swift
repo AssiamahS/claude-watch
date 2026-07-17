@@ -4,17 +4,22 @@ struct MultiSessionPager: View {
     @EnvironmentObject private var state: WatchViewState
 
     var body: some View {
-        if state.sessions.isEmpty {
-            waitingView
-        } else {
-            TabView(selection: $state.activeSessionIndex) {
+        TabView(selection: $state.activeSessionIndex) {
+            if state.sessions.isEmpty {
+                waitingView
+                    .tag(0)
+            } else {
                 ForEach(Array(state.sessions.enumerated()), id: \.element.id) { index, _ in
                     SessionView(sessionIndex: index)
                         .tag(index)
                 }
             }
-            .tabViewStyle(.page)
+
+            // Raw terminal mirror — swipe past the sessions to reach slyterm
+            RawTerminalView()
+                .tag(-1)
         }
+        .tabViewStyle(.page)
     }
 
     private var waitingView: some View {

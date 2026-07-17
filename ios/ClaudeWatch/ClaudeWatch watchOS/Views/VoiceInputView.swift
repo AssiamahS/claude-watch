@@ -6,6 +6,9 @@ import SwiftUI
 /// since the Speech framework is not available on watchOS.
 struct VoiceInputView: View {
     var sessionId: String? = nil
+    /// When set, captured text goes here instead of the agent session
+    /// (used by the raw terminal mirror).
+    var onSend: ((String) -> Void)? = nil
     @EnvironmentObject private var session: WatchViewState
     @Environment(\.dismiss) private var dismiss
 
@@ -97,7 +100,11 @@ struct VoiceInputView: View {
         guard !text.isEmpty else { return }
 
         HapticManager.commandSent()
-        session.sendVoiceCommand(text, sessionId: sessionId)
+        if let onSend {
+            onSend(text)
+        } else {
+            session.sendVoiceCommand(text, sessionId: sessionId)
+        }
         dismiss()
     }
 }

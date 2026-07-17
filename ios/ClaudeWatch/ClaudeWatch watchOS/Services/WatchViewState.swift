@@ -16,6 +16,9 @@ class WatchViewState: ObservableObject {
     @Published var sessions: [AgentSession] = []
     @Published var activeSessionIndex: Int = 0
 
+    // Raw terminal mirror (slyterm on the wrist) — rendered tmux screen text
+    @Published var termScreen: String = ""
+
     var activeSession: AgentSession? {
         guard sessions.indices.contains(activeSessionIndex) else { return nil }
         return sessions[activeSessionIndex]
@@ -200,6 +203,11 @@ class WatchViewState: ObservableObject {
                 if !cleaned.isEmpty {
                     appendLine(TerminalLine(text: String(cleaned.prefix(80)), type: .output), sessionId: sessionId)
                 }
+            }
+
+        case "screen":
+            if let text = json["text"] as? String {
+                termScreen = text
             }
 
         case "task-complete":
@@ -525,6 +533,23 @@ class WatchViewState: ObservableObject {
 
         URLSession.shared.dataTask(with: request) { _, _, error in
             if let error { print("[WatchViewState] Command send failed: \(error)") }
+        }.resume()
+    }
+
+    // MARK: - Raw terminal input (slyterm mirror)
+
+    func sendTermInput(_ text: String) {
+        guard let baseURL = bridge.baseURL, let token = bridge.token else { return }
+
+        let url = baseURL.appendingPathComponent("command")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["termInput": text])
+
+        URLSession.shared.dataTask(with: request) { _, _, error in
+            if let error { print("[WatchViewState] Terminal input send failed: \(error)") }
         }.resume()
     }
 
