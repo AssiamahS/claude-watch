@@ -17,21 +17,27 @@ struct SessionView: View {
 
     var body: some View {
         ZStack {
-            VStack(spacing: 0) {
-                // Top bar — agent icon + folder name
+            // The Claude Code welcome box, live: coral-bordered terminal
+            // panel with the spark + wordmark header and streaming session
+            // output inside.
+            VStack(alignment: .leading, spacing: 3) {
+                // Header — ✳ Claude Code + folder + status dot
                 HStack(spacing: 4) {
-                    AgentIcon(agent: agentSession.agent, size: 14)
-                    Text(agentSession.folderName.isEmpty ? agentSession.agent.rawValue.capitalized : agentSession.folderName)
-                        .font(.system(size: 10, weight: .bold))
+                    Text("✳")
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(Theme.Text.primary)
+                    Text("Claude Code")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(Theme.Text.primary)
+                    Spacer(minLength: 0)
+                    Text(agentSession.folderName.isEmpty ? agentSession.agent.rawValue : agentSession.folderName)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(Theme.Text.secondary)
                         .lineLimit(1)
-                    Spacer()
                     Circle()
                         .fill(statusColor)
                         .frame(width: 5, height: 5)
                 }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 2)
 
                 // Terminal
                 ScrollViewReader { proxy in
@@ -52,7 +58,6 @@ struct SessionView: View {
 
                             Spacer().frame(height: 40)
                         }
-                        .padding(.horizontal, 4)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .onChange(of: agentSession.terminalLines.count) { _ in
@@ -66,6 +71,15 @@ struct SessionView: View {
                     }
                 }
             }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Theme.Text.primary.opacity(0.8), lineWidth: 1.5)
+            )
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
             .background(Theme.Background.primary)
 
             // FAB buttons

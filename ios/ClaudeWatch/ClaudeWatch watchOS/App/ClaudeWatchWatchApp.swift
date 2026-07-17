@@ -10,7 +10,8 @@ enum Theme {
     }
 
     enum Text {
-        static let primary = Color(hex: "E87A35")
+        /// Claude Code brand coral — matches the terminal welcome box.
+        static let primary = Color(hex: "D97757")
         static let secondary = Color(hex: "666666")
         static let dimmed = Color(hex: "555555")
     }
